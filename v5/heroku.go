@@ -3,11 +3,10 @@
 // To be able to interact with this API, you have to
 // create a new service:
 //
-//     s := heroku.NewService(nil)
+//	s := heroku.NewService(nil)
 //
 // The Service struct has all the methods you need
 // to interact with heroku API.
-//
 package v5
 
 import (
@@ -15,13 +14,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/go-querystring/query"
 	"io"
 	"net/http"
 	"reflect"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/google/go-querystring/query"
 )
 
 var _ = time.Second
@@ -306,6 +306,23 @@ func (s *Service) AccountDeleteByUser(ctx context.Context, accountIdentity strin
 	return &account, s.Delete(ctx, &account, fmt.Sprintf("/users/%v", accountIdentity))
 }
 
+// A Heroku account becomes delinquent due to non-payment. We [suspend
+// and
+// delete](https://help.heroku.com/EREVRILX/what-happens-if-i-have-unpaid
+// -heroku-invoices) delinquent accounts if their invoices remain
+// unpaid.
+type AccountDelinquency struct {
+	ScheduledDeletionTime   *time.Time `json:"scheduled_deletion_time" url:"scheduled_deletion_time,key"`     // scheduled time of when we will delete your account due to delinquency
+	ScheduledSuspensionTime *time.Time `json:"scheduled_suspension_time" url:"scheduled_suspension_time,key"` // scheduled time of when we will suspend your account due to
+	// delinquency
+}
+
+// Account delinquency information.
+func (s *Service) AccountDelinquencyInfo(ctx context.Context) (*AccountDelinquency, error) {
+	var accountDelinquency AccountDelinquency
+	return &accountDelinquency, s.Get(ctx, &accountDelinquency, fmt.Sprintf("/account/delinquency"), nil, nil)
+}
+
 // An account feature represents a Heroku labs capability that can be
 // enabled or disabled for an account on Heroku.
 type AccountFeature struct {
@@ -375,10 +392,11 @@ type AddOn struct {
 		ID   string `json:"id" url:"id,key"`     // unique identifier of this plan
 		Name string `json:"name" url:"name,key"` // unique name of this plan
 	} `json:"plan" url:"plan,key"` // identity of add-on plan
-	ProviderID string    `json:"provider_id" url:"provider_id,key"` // id of this add-on with its provider
-	State      string    `json:"state" url:"state,key"`             // state in the add-on's lifecycle
-	UpdatedAt  time.Time `json:"updated_at" url:"updated_at,key"`   // when add-on was updated
-	WebURL     *string   `json:"web_url" url:"web_url,key"`         // URL for logging into web interface of add-on (e.g. a dashboard)
+	ProviderID       string    `json:"provider_id" url:"provider_id,key"`             // id of this add-on with its provider
+	ProvisionMessage string    `json:"provision_message" url:"provision_message,key"` // A provision message
+	State            string    `json:"state" url:"state,key"`                         // state in the add-on's lifecycle
+	UpdatedAt        time.Time `json:"updated_at" url:"updated_at,key"`               // when add-on was updated
+	WebURL           *string   `json:"web_url" url:"web_url,key"`                     // URL for logging into web interface of add-on (e.g. a dashboard)
 }
 type AddOnListResult []AddOn
 
@@ -506,10 +524,11 @@ type AddOnActionProvisionResult struct {
 		ID   string `json:"id" url:"id,key"`     // unique identifier of this plan
 		Name string `json:"name" url:"name,key"` // unique name of this plan
 	} `json:"plan" url:"plan,key"` // identity of add-on plan
-	ProviderID string    `json:"provider_id" url:"provider_id,key"` // id of this add-on with its provider
-	State      string    `json:"state" url:"state,key"`             // state in the add-on's lifecycle
-	UpdatedAt  time.Time `json:"updated_at" url:"updated_at,key"`   // when add-on was updated
-	WebURL     *string   `json:"web_url" url:"web_url,key"`         // URL for logging into web interface of add-on (e.g. a dashboard)
+	ProviderID       string    `json:"provider_id" url:"provider_id,key"`             // id of this add-on with its provider
+	ProvisionMessage string    `json:"provision_message" url:"provision_message,key"` // A provision message
+	State            string    `json:"state" url:"state,key"`                         // state in the add-on's lifecycle
+	UpdatedAt        time.Time `json:"updated_at" url:"updated_at,key"`               // when add-on was updated
+	WebURL           *string   `json:"web_url" url:"web_url,key"`                     // URL for logging into web interface of add-on (e.g. a dashboard)
 }
 
 // Mark an add-on as provisioned for use.
@@ -546,10 +565,11 @@ type AddOnActionDeprovisionResult struct {
 		ID   string `json:"id" url:"id,key"`     // unique identifier of this plan
 		Name string `json:"name" url:"name,key"` // unique name of this plan
 	} `json:"plan" url:"plan,key"` // identity of add-on plan
-	ProviderID string    `json:"provider_id" url:"provider_id,key"` // id of this add-on with its provider
-	State      string    `json:"state" url:"state,key"`             // state in the add-on's lifecycle
-	UpdatedAt  time.Time `json:"updated_at" url:"updated_at,key"`   // when add-on was updated
-	WebURL     *string   `json:"web_url" url:"web_url,key"`         // URL for logging into web interface of add-on (e.g. a dashboard)
+	ProviderID       string    `json:"provider_id" url:"provider_id,key"`             // id of this add-on with its provider
+	ProvisionMessage string    `json:"provision_message" url:"provision_message,key"` // A provision message
+	State            string    `json:"state" url:"state,key"`                         // state in the add-on's lifecycle
+	UpdatedAt        time.Time `json:"updated_at" url:"updated_at,key"`               // when add-on was updated
+	WebURL           *string   `json:"web_url" url:"web_url,key"`                     // URL for logging into web interface of add-on (e.g. a dashboard)
 }
 
 // Mark an add-on as deprovisioned.
@@ -1135,7 +1155,7 @@ type App struct {
 		Name string `json:"name" url:"name,key"` // unique name of team
 	} `json:"team" url:"team,key"` // identity of team
 	UpdatedAt time.Time `json:"updated_at" url:"updated_at,key"` // when app was updated
-	WebURL    string    `json:"web_url" url:"web_url,key"`       // web URL of app
+	WebURL    *string   `json:"web_url" url:"web_url,key"`       // web URL of app
 }
 type AppCreateOpts struct {
 	FeatureFlags []*string `json:"feature_flags,omitempty" url:"feature_flags,omitempty,key"` // unique name of app feature
@@ -1245,18 +1265,6 @@ type AppFeatureUpdateOpts struct {
 func (s *Service) AppFeatureUpdate(ctx context.Context, appIdentity string, appFeatureIdentity string, o AppFeatureUpdateOpts) (*AppFeature, error) {
 	var appFeature AppFeature
 	return &appFeature, s.Patch(ctx, &appFeature, fmt.Sprintf("/apps/%v/features/%v", appIdentity, appFeatureIdentity), o)
-}
-
-// App formation set describes the combination of process types with
-// their quantities and sizes as well as application process tier
-type AppFormationSet struct {
-	App struct {
-		ID   string `json:"id" url:"id,key"`     // unique identifier of app
-		Name string `json:"name" url:"name,key"` // unique name of app
-	} `json:"app" url:"app,key"` // app being described by the formation-set
-	Description string    `json:"description" url:"description,key"`   // a string representation of the formation set
-	ProcessTier string    `json:"process_tier" url:"process_tier,key"` // application process tier
-	UpdatedAt   time.Time `json:"updated_at" url:"updated_at,key"`     // last time fomation-set was updated
 }
 
 // An app setup represents an app on Heroku that is setup using an
@@ -1691,7 +1699,8 @@ type Build struct {
 		// integrity
 		URL string `json:"url" url:"url,key"` // URL where gzipped tar archive of source code for build was
 		// downloaded.
-		Version *string `json:"version" url:"version,key"` // Version of the gzipped tarball.
+		Version            *string `json:"version" url:"version,key"`                         // Version of the gzipped tarball.
+		VersionDescription *string `json:"version_description" url:"version_description,key"` // Version description of the gzipped tarball.
 	} `json:"source_blob" url:"source_blob,key"` // location of gzipped tarball of source code used to create build
 	Stack     string    `json:"stack" url:"stack,key"`           // stack of build
 	Status    string    `json:"status" url:"status,key"`         // status of build
@@ -1711,7 +1720,8 @@ type BuildCreateOpts struct {
 		// integrity
 		URL *string `json:"url,omitempty" url:"url,omitempty,key"` // URL where gzipped tar archive of source code for build was
 		// downloaded.
-		Version *string `json:"version,omitempty" url:"version,omitempty,key"` // Version of the gzipped tarball.
+		Version            *string `json:"version,omitempty" url:"version,omitempty,key"`                         // Version of the gzipped tarball.
+		VersionDescription *string `json:"version_description,omitempty" url:"version_description,omitempty,key"` // Version description of the gzipped tarball.
 	} `json:"source_blob" url:"source_blob,key"` // location of gzipped tarball of source code used to create build
 }
 
@@ -1739,6 +1749,12 @@ func (s *Service) BuildList(ctx context.Context, appIdentity string, lr *ListRan
 func (s *Service) BuildDeleteCache(ctx context.Context, appIdentity string) (*Build, error) {
 	var build Build
 	return &build, s.Delete(ctx, &build, fmt.Sprintf("/apps/%v/build-cache", appIdentity))
+}
+
+// Cancel running build.
+func (s *Service) BuildCancel(ctx context.Context, appIdentity string, buildIdentity string) (*Build, error) {
+	var build Build
+	return &build, s.Delete(ctx, &build, fmt.Sprintf("/apps/%v/builds/%v", appIdentity, buildIdentity))
 }
 
 // A buildpack installation represents a buildpack that will be run
@@ -1970,7 +1986,7 @@ type Dyno struct {
 		ID      string `json:"id" url:"id,key"`           // unique identifier of release
 		Version int    `json:"version" url:"version,key"` // unique version assigned to the release
 	} `json:"release" url:"release,key"` // app release of the dyno
-	Size  string `json:"size" url:"size,key"`   // dyno size (default: "standard-1X")
+	Size  string `json:"size" url:"size,key"`   // dyno size
 	State string `json:"state" url:"state,key"` // current status of process (either: crashed, down, idle, starting, or
 	// up)
 	Type      string    `json:"type" url:"type,key"`             // type of process
@@ -1981,7 +1997,7 @@ type DynoCreateOpts struct {
 	Command    string            `json:"command" url:"command,key"`                               // command used to start this process
 	Env        map[string]string `json:"env,omitempty" url:"env,omitempty,key"`                   // custom environment to add to the dyno config vars
 	ForceNoTty *bool             `json:"force_no_tty,omitempty" url:"force_no_tty,omitempty,key"` // force an attached one-off dyno to not run in a tty
-	Size       *string           `json:"size,omitempty" url:"size,omitempty,key"`                 // dyno size (default: "standard-1X")
+	Size       *string           `json:"size,omitempty" url:"size,omitempty,key"`                 // dyno size
 	TimeToLive *int              `json:"time_to_live,omitempty" url:"time_to_live,omitempty,key"` // seconds until dyno expires, after which it will soon be killed, max
 	// 86400 seconds (24 hours)
 	Type *string `json:"type,omitempty" url:"type,omitempty,key"` // type of process
@@ -2039,11 +2055,13 @@ type DynoSize struct {
 	Compute          int       `json:"compute" url:"compute,key"`                       // minimum vCPUs, non-dedicated may get more depending on load
 	Cost             *struct{} `json:"cost" url:"cost,key"`                             // price information for this dyno size
 	Dedicated        bool      `json:"dedicated" url:"dedicated,key"`                   // whether this dyno will be dedicated to one user
-	DynoUnits        int       `json:"dyno_units" url:"dyno_units,key"`                 // unit of consumption for Heroku Enterprise customers
+	DynoUnits        int       `json:"dyno_units" url:"dyno_units,key"`                 // deprecated. See precise_dyno_units instead
 	ID               string    `json:"id" url:"id,key"`                                 // unique identifier of this dyno size
 	Memory           float64   `json:"memory" url:"memory,key"`                         // amount of RAM in GB
 	Name             string    `json:"name" url:"name,key"`                             // the name of this dyno-size
-	PrivateSpaceOnly bool      `json:"private_space_only" url:"private_space_only,key"` // whether this dyno can only be provisioned in a private space
+	PreciseDynoUnits float64   `json:"precise_dyno_units" url:"precise_dyno_units,key"` // unit of consumption for Heroku Enterprise customers to 2 decimal
+	// places
+	PrivateSpaceOnly bool `json:"private_space_only" url:"private_space_only,key"` // whether this dyno can only be provisioned in a private space
 }
 
 // Info for existing dyno size.
@@ -2142,7 +2160,6 @@ type EnterpriseAccountDailyUsageInfoResult []EnterpriseAccountDailyUsage
 // from the [enterprise account
 // list](https://devcenter.heroku.com/articles/platform-api-reference#ent
 // erprise-account-list).
-//
 func (s *Service) EnterpriseAccountDailyUsageInfo(ctx context.Context, enterpriseAccountID string, o EnterpriseAccountDailyUsageInfoOpts, lr *ListRange) (EnterpriseAccountDailyUsageInfoResult, error) {
 	var enterpriseAccountDailyUsage EnterpriseAccountDailyUsageInfoResult
 	return enterpriseAccountDailyUsage, s.Get(ctx, &enterpriseAccountDailyUsage, fmt.Sprintf("/enterprise-accounts/%v/usage/daily", enterpriseAccountID), o, lr)
@@ -2255,7 +2272,6 @@ type EnterpriseAccountMonthlyUsageInfoResult []EnterpriseAccountMonthlyUsage
 // [enterprise account
 // list](https://devcenter.heroku.com/articles/platform-api-reference#ent
 // erprise-account-list).
-//
 func (s *Service) EnterpriseAccountMonthlyUsageInfo(ctx context.Context, enterpriseAccountID string, o EnterpriseAccountMonthlyUsageInfoOpts, lr *ListRange) (EnterpriseAccountMonthlyUsageInfoResult, error) {
 	var enterpriseAccountMonthlyUsage EnterpriseAccountMonthlyUsageInfoResult
 	return enterpriseAccountMonthlyUsage, s.Get(ctx, &enterpriseAccountMonthlyUsage, fmt.Sprintf("/enterprise-accounts/%v/usage/monthly", enterpriseAccountID), o, lr)
@@ -2312,7 +2328,7 @@ type FilterAppsAppsResult []struct {
 		Name string `json:"name" url:"name,key"` // unique name of team
 	} `json:"team" url:"team,key"` // team that owns this app
 	UpdatedAt time.Time `json:"updated_at" url:"updated_at,key"` // when app was updated
-	WebURL    string    `json:"web_url" url:"web_url,key"`       // web URL of app
+	WebURL    *string   `json:"web_url" url:"web_url,key"`       // web URL of app
 }
 
 // Request an apps list filtered by app id.
@@ -2335,7 +2351,7 @@ type Formation struct {
 	CreatedAt time.Time `json:"created_at" url:"created_at,key"` // when process type was created
 	ID        string    `json:"id" url:"id,key"`                 // unique identifier of this process type
 	Quantity  int       `json:"quantity" url:"quantity,key"`     // number of processes to maintain
-	Size      string    `json:"size" url:"size,key"`             // dyno size (default: "standard-1X")
+	Size      string    `json:"size" url:"size,key"`             // dyno size
 	Type      string    `json:"type" url:"type,key"`             // type of process to maintain
 	UpdatedAt time.Time `json:"updated_at" url:"updated_at,key"` // when dyno type was updated
 }
@@ -2357,7 +2373,7 @@ func (s *Service) FormationList(ctx context.Context, appIdentity string, lr *Lis
 type FormationBatchUpdateOpts struct {
 	Updates []struct {
 		Quantity *int    `json:"quantity,omitempty" url:"quantity,omitempty,key"` // number of processes to maintain
-		Size     *string `json:"size,omitempty" url:"size,omitempty,key"`         // dyno size (default: "standard-1X")
+		Size     *string `json:"size,omitempty" url:"size,omitempty,key"`         // dyno size
 		Type     string  `json:"type" url:"type,key"`                             // type of process to maintain
 	} `json:"updates" url:"updates,key"` // Array with formation updates. Each element must have "type", the id
 	// or name of the process type to be updated, and can optionally update
@@ -2373,7 +2389,7 @@ func (s *Service) FormationBatchUpdate(ctx context.Context, appIdentity string, 
 
 type FormationUpdateOpts struct {
 	Quantity *int    `json:"quantity,omitempty" url:"quantity,omitempty,key"` // number of processes to maintain
-	Size     *string `json:"size,omitempty" url:"size,omitempty,key"`         // dyno size (default: "standard-1X")
+	Size     *string `json:"size,omitempty" url:"size,omitempty,key"`         // dyno size
 }
 
 // Update process type
@@ -2382,8 +2398,8 @@ func (s *Service) FormationUpdate(ctx context.Context, appIdentity string, forma
 	return &formation, s.Patch(ctx, &formation, fmt.Sprintf("/apps/%v/formation/%v", appIdentity, formationIdentity), o)
 }
 
-// Identity Providers represent the SAML configuration of an Enterprise
-// Account or Team.
+// Identity Providers represent the SAML configuration of teams or an
+// Enterprise account
 type IdentityProvider struct {
 	Certificate  string    `json:"certificate" url:"certificate,key"` // raw contents of the public certificate (eg: .crt or .pem file)
 	CreatedAt    time.Time `json:"created_at" url:"created_at,key"`   // when provider record was created
@@ -2591,9 +2607,17 @@ func (s *Service) KeyList(ctx context.Context, lr *ListRange) (KeyListResult, er
 // removed by removing the add-on.
 type LogDrain struct {
 	Addon *struct {
+		App struct {
+			ID   string `json:"id" url:"id,key"`     // unique identifier of app
+			Name string `json:"name" url:"name,key"` // unique name of app
+		} `json:"app" url:"app,key"` // billing application associated with this add-on
 		ID   string `json:"id" url:"id,key"`     // unique identifier of add-on
 		Name string `json:"name" url:"name,key"` // globally unique name of the add-on
 	} `json:"addon" url:"addon,key"` // add-on that created the drain
+	App *struct {
+		ID   string `json:"id" url:"id,key"`     // unique identifier of app
+		Name string `json:"name" url:"name,key"` // unique name of app
+	} `json:"app" url:"app,key"` // application that is attached to this drain
 	CreatedAt time.Time `json:"created_at" url:"created_at,key"` // when log drain was created
 	ID        string    `json:"id" url:"id,key"`                 // unique identifier of this log drain
 	Token     string    `json:"token" url:"token,key"`           // token associated with the log drain
@@ -2777,7 +2801,8 @@ func (s *Service) OAuthClientDelete(ctx context.Context, oauthClientIdentity str
 	return &oauthClient, s.Delete(ctx, &oauthClient, fmt.Sprintf("/oauth/clients/%v", oauthClientIdentity))
 }
 
-// Info for an OAuth client
+// Info for an OAuth client. The output for unauthenticated requests
+// excludes the `secret` parameter.
 func (s *Service) OAuthClientInfo(ctx context.Context, oauthClientIdentity string) (*OAuthClient, error) {
 	var oauthClient OAuthClient
 	return &oauthClient, s.Get(ctx, &oauthClient, fmt.Sprintf("/oauth/clients/%v", oauthClientIdentity), nil, nil)
@@ -2877,63 +2902,6 @@ func (s *Service) OAuthTokenDelete(ctx context.Context, oauthTokenIdentity strin
 	return &oauthToken, s.Delete(ctx, &oauthToken, fmt.Sprintf("/oauth/tokens/%v", oauthTokenIdentity))
 }
 
-// An outbound-ruleset is a collection of rules that specify what hosts
-// Dynos are allowed to communicate with.
-type OutboundRuleset struct {
-	CreatedAt time.Time `json:"created_at" url:"created_at,key"` // when outbound-ruleset was created
-	CreatedBy string    `json:"created_by" url:"created_by,key"` // unique email address of account
-	ID        string    `json:"id" url:"id,key"`                 // unique identifier of an outbound-ruleset
-	Rules     []struct {
-		FromPort int    `json:"from_port" url:"from_port,key"` // an endpoint of communication in an operating system.
-		Protocol string `json:"protocol" url:"protocol,key"`   // formal standards and policies comprised of rules, procedures and
-		// formats that define communication between two or more devices over a
-		// network
-		Target string `json:"target" url:"target,key"`   // is the target destination in CIDR notation
-		ToPort int    `json:"to_port" url:"to_port,key"` // an endpoint of communication in an operating system.
-	} `json:"rules" url:"rules,key"`
-	Space struct {
-		ID   string `json:"id" url:"id,key"`     // unique identifier of space
-		Name string `json:"name" url:"name,key"` // unique name of space
-	} `json:"space" url:"space,key"` // identity of space
-}
-
-// Current outbound ruleset for a space
-func (s *Service) OutboundRulesetCurrent(ctx context.Context, spaceIdentity string) (*OutboundRuleset, error) {
-	var outboundRuleset OutboundRuleset
-	return &outboundRuleset, s.Get(ctx, &outboundRuleset, fmt.Sprintf("/spaces/%v/outbound-ruleset", spaceIdentity), nil, nil)
-}
-
-// Info on an existing Outbound Ruleset
-func (s *Service) OutboundRulesetInfo(ctx context.Context, spaceIdentity string, outboundRulesetIdentity string) (*OutboundRuleset, error) {
-	var outboundRuleset OutboundRuleset
-	return &outboundRuleset, s.Get(ctx, &outboundRuleset, fmt.Sprintf("/spaces/%v/outbound-rulesets/%v", spaceIdentity, outboundRulesetIdentity), nil, nil)
-}
-
-type OutboundRulesetListResult []OutboundRuleset
-
-// List all Outbound Rulesets for a space
-func (s *Service) OutboundRulesetList(ctx context.Context, spaceIdentity string, lr *ListRange) (OutboundRulesetListResult, error) {
-	var outboundRuleset OutboundRulesetListResult
-	return outboundRuleset, s.Get(ctx, &outboundRuleset, fmt.Sprintf("/spaces/%v/outbound-rulesets", spaceIdentity), nil, lr)
-}
-
-type OutboundRulesetCreateOpts struct {
-	Rules []*struct {
-		FromPort int    `json:"from_port" url:"from_port,key"` // an endpoint of communication in an operating system.
-		Protocol string `json:"protocol" url:"protocol,key"`   // formal standards and policies comprised of rules, procedures and
-		// formats that define communication between two or more devices over a
-		// network
-		Target string `json:"target" url:"target,key"`   // is the target destination in CIDR notation
-		ToPort int    `json:"to_port" url:"to_port,key"` // an endpoint of communication in an operating system.
-	} `json:"rules,omitempty" url:"rules,omitempty,key"`
-}
-
-// Create a new outbound ruleset
-func (s *Service) OutboundRulesetCreate(ctx context.Context, spaceIdentity string, o OutboundRulesetCreateOpts) (*OutboundRuleset, error) {
-	var outboundRuleset OutboundRuleset
-	return &outboundRuleset, s.Put(ctx, &outboundRuleset, fmt.Sprintf("/spaces/%v/outbound-ruleset", spaceIdentity), o)
-}
-
 // A password reset represents a in-process password reset attempt.
 type PasswordReset struct {
 	CreatedAt time.Time `json:"created_at" url:"created_at,key"` // when password reset was created
@@ -2943,7 +2911,7 @@ type PasswordReset struct {
 	} `json:"user" url:"user,key"`
 }
 type PasswordResetResetPasswordOpts struct {
-	Email *string `json:"email,omitempty" url:"email,omitempty,key"` // unique email address of account
+	Email string `json:"email" url:"email,key"` // unique email address of account
 }
 
 // Reset account's password. This will send a reset password link to the
@@ -2954,8 +2922,8 @@ func (s *Service) PasswordResetResetPassword(ctx context.Context, o PasswordRese
 }
 
 type PasswordResetCompleteResetPasswordOpts struct {
-	Password             *string `json:"password,omitempty" url:"password,omitempty,key"`                           // current password on the account
-	PasswordConfirmation *string `json:"password_confirmation,omitempty" url:"password_confirmation,omitempty,key"` // confirmation of the new password
+	Password             string `json:"password" url:"password,key"`                           // current password on the account
+	PasswordConfirmation string `json:"password_confirmation" url:"password_confirmation,key"` // confirmation of the new password
 }
 
 // Complete password reset.
@@ -2965,7 +2933,8 @@ func (s *Service) PasswordResetCompleteResetPassword(ctx context.Context, passwo
 }
 
 // [Peering](https://devcenter.heroku.com/articles/private-space-peering)
-//  provides a way to peer your Private Space VPC to another AWS VPC.
+//
+//	provides a way to peer your Private Space VPC to another AWS VPC.
 type Peering struct {
 	AwsAccountID string    `json:"aws_account_id" url:"aws_account_id,key"` // The AWS account ID of your Private Space.
 	AwsRegion    string    `json:"aws_region" url:"aws_region,key"`         // The AWS region of the peer connection.
@@ -3127,7 +3096,8 @@ type PipelineBuildListResult []struct {
 		// integrity
 		URL string `json:"url" url:"url,key"` // URL where gzipped tar archive of source code for build was
 		// downloaded.
-		Version *string `json:"version" url:"version,key"` // Version of the gzipped tarball.
+		Version            *string `json:"version" url:"version,key"`                         // Version of the gzipped tarball.
+		VersionDescription *string `json:"version_description" url:"version_description,key"` // Version description of the gzipped tarball.
 	} `json:"source_blob" url:"source_blob,key"` // location of gzipped tarball of source code used to create build
 	Stack     string    `json:"stack" url:"stack,key"`           // stack of build
 	Status    string    `json:"status" url:"status,key"`         // status of build
@@ -4253,10 +4223,11 @@ type TeamAddOnListForTeamResult []struct {
 		ID   string `json:"id" url:"id,key"`     // unique identifier of this plan
 		Name string `json:"name" url:"name,key"` // unique name of this plan
 	} `json:"plan" url:"plan,key"` // identity of add-on plan
-	ProviderID string    `json:"provider_id" url:"provider_id,key"` // id of this add-on with its provider
-	State      string    `json:"state" url:"state,key"`             // state in the add-on's lifecycle
-	UpdatedAt  time.Time `json:"updated_at" url:"updated_at,key"`   // when add-on was updated
-	WebURL     *string   `json:"web_url" url:"web_url,key"`         // URL for logging into web interface of add-on (e.g. a dashboard)
+	ProviderID       string    `json:"provider_id" url:"provider_id,key"`             // id of this add-on with its provider
+	ProvisionMessage string    `json:"provision_message" url:"provision_message,key"` // A provision message
+	State            string    `json:"state" url:"state,key"`                         // state in the add-on's lifecycle
+	UpdatedAt        time.Time `json:"updated_at" url:"updated_at,key"`               // when add-on was updated
+	WebURL           *string   `json:"web_url" url:"web_url,key"`                     // URL for logging into web interface of add-on (e.g. a dashboard)
 }
 
 // List add-ons used across all Team apps
@@ -4305,7 +4276,7 @@ type TeamApp struct {
 		Name string `json:"name" url:"name,key"` // unique name of team
 	} `json:"team" url:"team,key"` // team that owns this app
 	UpdatedAt time.Time `json:"updated_at" url:"updated_at,key"` // when app was updated
-	WebURL    string    `json:"web_url" url:"web_url,key"`       // web URL of app
+	WebURL    *string   `json:"web_url" url:"web_url,key"`       // web URL of app
 }
 type TeamAppCreateOpts struct {
 	InternalRouting *bool   `json:"internal_routing,omitempty" url:"internal_routing,omitempty,key"` // describes whether a Private Spaces app is externally routable or not
@@ -4481,10 +4452,23 @@ type TeamDailyUsageInfoResult []TeamDailyUsage
 // YYYY-MM-DD. The team identifier can be found from the [team list
 // endpoint](https://devcenter.heroku.com/articles/platform-api-reference
 // #team-list).
-//
 func (s *Service) TeamDailyUsageInfo(ctx context.Context, teamID string, o TeamDailyUsageInfoOpts, lr *ListRange) (TeamDailyUsageInfoResult, error) {
 	var teamDailyUsage TeamDailyUsageInfoResult
 	return teamDailyUsage, s.Get(ctx, &teamDailyUsage, fmt.Sprintf("/teams/%v/usage/daily", teamID), o, lr)
+}
+
+// A Heroku team becomes delinquent due to non-payment. We [suspend and
+// delete](https://help.heroku.com/EREVRILX/what-happens-if-i-have-unpaid
+// -heroku-invoices) delinquent teams if their invoices remain unpaid.
+type TeamDelinquency struct {
+	ScheduledDeletionTime   *time.Time `json:"scheduled_deletion_time" url:"scheduled_deletion_time,key"`     // scheduled time of when we will delete your team due to delinquency
+	ScheduledSuspensionTime *time.Time `json:"scheduled_suspension_time" url:"scheduled_suspension_time,key"` // scheduled time of when we will suspend your team due to delinquency
+}
+
+// Team delinquency information.
+func (s *Service) TeamDelinquencyInfo(ctx context.Context, teamIdentity string) (*TeamDelinquency, error) {
+	var teamDelinquency TeamDelinquency
+	return &teamDelinquency, s.Get(ctx, &teamDelinquency, fmt.Sprintf("/teams/%v/delinquency", teamIdentity), nil, nil)
 }
 
 // A team feature represents a feature enabled on a team account.
@@ -4582,11 +4566,10 @@ type TeamInvitationAcceptResult struct {
 		} `json:"owner" url:"owner,key"` // entity that owns this identity provider
 		Redacted bool `json:"redacted" url:"redacted,key"` // whether the identity_provider information is redacted or not
 	} `json:"identity_provider" url:"identity_provider,key"` // Identity Provider information the member is federated with
-	Role                    *string `json:"role" url:"role,key"`                                           // role in the team
-	TwoFactorAuthentication bool    `json:"two_factor_authentication" url:"two_factor_authentication,key"` // whether the Enterprise team member has two factor authentication
-	// enabled
-	UpdatedAt time.Time `json:"updated_at" url:"updated_at,key"` // when the membership record was updated
-	User      struct {
+	Role                    *string   `json:"role" url:"role,key"`                                           // role in the team
+	TwoFactorAuthentication bool      `json:"two_factor_authentication" url:"two_factor_authentication,key"` // whether the team member has two factor authentication enabled
+	UpdatedAt               time.Time `json:"updated_at" url:"updated_at,key"`                               // when the membership record was updated
+	User                    struct {
 		Email string  `json:"email" url:"email,key"` // unique email address of account
 		ID    string  `json:"id" url:"id,key"`       // unique identifier of an account
 		Name  *string `json:"name" url:"name,key"`   // full name of the account owner
@@ -4650,11 +4633,10 @@ type TeamMember struct {
 		} `json:"owner" url:"owner,key"` // entity that owns this identity provider
 		Redacted bool `json:"redacted" url:"redacted,key"` // whether the identity_provider information is redacted or not
 	} `json:"identity_provider" url:"identity_provider,key"` // Identity Provider information the member is federated with
-	Role                    *string `json:"role" url:"role,key"`                                           // role in the team
-	TwoFactorAuthentication bool    `json:"two_factor_authentication" url:"two_factor_authentication,key"` // whether the Enterprise team member has two factor authentication
-	// enabled
-	UpdatedAt time.Time `json:"updated_at" url:"updated_at,key"` // when the membership record was updated
-	User      struct {
+	Role                    *string   `json:"role" url:"role,key"`                                           // role in the team
+	TwoFactorAuthentication bool      `json:"two_factor_authentication" url:"two_factor_authentication,key"` // whether the team member has two factor authentication enabled
+	UpdatedAt               time.Time `json:"updated_at" url:"updated_at,key"`                               // when the membership record was updated
+	User                    struct {
 		Email string  `json:"email" url:"email,key"` // unique email address of account
 		ID    string  `json:"id" url:"id,key"`       // unique identifier of an account
 		Name  *string `json:"name" url:"name,key"`   // full name of the account owner
@@ -4748,7 +4730,7 @@ type TeamMemberListByMemberResult []struct {
 		Name string `json:"name" url:"name,key"` // unique name of team
 	} `json:"team" url:"team,key"` // team that owns this app
 	UpdatedAt time.Time `json:"updated_at" url:"updated_at,key"` // when app was updated
-	WebURL    string    `json:"web_url" url:"web_url,key"`       // web URL of app
+	WebURL    *string   `json:"web_url" url:"web_url,key"`       // web URL of app
 }
 
 // List the apps of a team member.
@@ -4788,7 +4770,6 @@ type TeamMonthlyUsageInfoResult []TeamMonthlyUsage
 // The team identifier can be found from the [team list
 // endpoint](https://devcenter.heroku.com/articles/platform-api-reference
 // #team-list).
-//
 func (s *Service) TeamMonthlyUsageInfo(ctx context.Context, teamID string, o TeamMonthlyUsageInfoOpts, lr *ListRange) (TeamMonthlyUsageInfoResult, error) {
 	var teamMonthlyUsage TeamMonthlyUsageInfoResult
 	return teamMonthlyUsage, s.Get(ctx, &teamMonthlyUsage, fmt.Sprintf("/teams/%v/usage/monthly", teamID), o, lr)
@@ -4917,7 +4898,7 @@ type TestRun struct {
 	CreatedAt     time.Time `json:"created_at" url:"created_at,key"`         // when test run was created
 	Debug         bool      `json:"debug" url:"debug,key"`                   // whether the test run was started for interactive debugging
 	Dyno          *struct {
-		Size string `json:"size" url:"size,key"` // dyno size (default: "standard-1X")
+		Size string `json:"size" url:"size,key"` // dyno size
 	} `json:"dyno" url:"dyno,key"` // the type of dynos used for this test-run
 	ID           string  `json:"id" url:"id,key"`           // unique identifier of a test run
 	Message      *string `json:"message" url:"message,key"` // human friendly message indicating reason for an error
